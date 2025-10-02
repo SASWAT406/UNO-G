@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple UNO-Style Card Game</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for card appearance */
+        .card {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 70px;
+            height: 100px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            transition: transform 0.1s;
+            user-select: none;
+            flex-shrink: 0;
+            margin: 0 4px;
+        }
+        .card:hover {
+            transform: translateY(-4px);
+        }
+        .back-card {
+            background-color: #3b82f6; /* Blue-500 */
+            border: 4px solid #1d4ed8; /* Blue-700 */
+            width: 70px;
+            height: 100px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            color: white;
+            cursor: pointer;
+        }
+        .text-inter {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Mobile adjustments */
+        @media (max-width: 640px) {
+            .card {
+                width: 60px;
+                height: 90px;
+                font-size: 1.25rem;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center p-4 text-inter">
+
+    <div id="game-container" class="w-full max-w-4xl bg-white p-6 rounded-xl shadow-2xl">
+        
+        <!-- Game Header / Status -->
+        <h1 class="text-3xl font-extrabold text-center text-gray-800 mb-6">UNO-Style Card Game</h1>
+        
+        <div class="flex justify-between items-center mb-6 p-4 bg-gray-50 rounded-lg shadow-inner">
+            <p class="text-lg font-semibold text-gray-600">Player 2 Cards: <span id="p2-count" class="text-blue-600">0</span></p>
+            <p class="text-lg font-semibold text-gray-600">Draw Pile: <span id="draw-count" class="text-blue-600">0</span> cards</p>
+        </div>
+
+        <!-- Discard and Draw Area -->
+        <div class="flex justify-center items-start space-x-8 mb-8">
+            
+            <!-- Draw Pile (Deck) -->
+            <div id="draw-deck" class="flex flex-col items-center">
+                <span class="text-sm font-medium text-gray-600 mb-2">DRAW PILE</span>
+                <div class="back-card text-xs">DRAW</div>
+            </div>
+
+            <!-- Discard Pile (Top Card) -->
+            <div id="discard-pile" class="flex flex-col items-center">
+                <span class="text-sm font-medium text-gray-600 mb-2">TOP CARD</span>
+                <div id="top-card-display" class="card bg-gray-400 text-3xl">?</div>
+            </div>
+        </div>
+
+        <!-- Game Messages -->
+        <div id="message-box" class="min-h-[50px] mb-6 p-3 text-center bg-indigo-100 text-indigo-800 rounded-lg font-semibold transition-all">
+            Click "Start Game" to begin!
+        </div>
+
+        <!-- Player 1 Hand -->
+        <h2 class="text-xl font-bold text-gray-700 mb-3">Your Hand (<span id="p1-count">0</span>)</h2>
+        <div id="player-hand" class="flex flex-wrap justify-center p-4 bg-gray-200 rounded-lg shadow-inner mb-6 min-h-[120px]">
+            <!-- Cards will be injected here -->
+        </div>
+
+        <!-- Control Area -->
+        <div id="controls" class="flex flex-col sm:flex-row justify-center items-center space-y-4 sm:space-y-0 sm:space-x-4">
+            <button id="start-button" class="bg-green-600 text-white py-3 px-8 rounded-full font-bold shadow-lg hover:bg-green-700 transition transform hover:scale-105">
+                Start Game
+            </button>
+            <button id="draw-button" class="bg-yellow-500 text-gray-800 py-3 px-8 rounded-full font-bold shadow-lg hover:bg-yellow-600 transition transform hover:scale-105 opacity-50 cursor-not-allowed" disabled>
+                Draw Card
+            </button>
+        </div>
+        
+    </div>
+
+    <!-- Modal for Win/Loss -->
+    <div id="modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden items-center justify-center p-4 z-50">
+        <div class="bg-white p-8 rounded-xl shadow-2xl text-center max-w-sm w-full">
+            <h3 id="modal-title" class="text-3xl font-bold text-gray-800 mb-4"></h3>
+            <p id="modal-body" class="text-gray-600 mb-6"></p>
+            <button onclick="document.location.reload()" class="bg-blue-600 text-white py-2 px-6 rounded-full font-bold hover:bg-blue-700 transition">
+                Play Again
+            </button>
+        </div>
+    </div>
+
+
+    <script>
+        // Global Game State
+        let player1Hand = [];
+        let player2Hand = [];
+        let drawPile = [];
+        let topCard = null;
+        let isPlayerTurn = false;
+
+        // UI Elements
+        const playerHandEl = document.getElementById('player-hand');
+        const topCardEl = document.getElementById('top-card-display');
+        const p2CountEl = document.getElementById('p2-count');
+        const drawCountEl = document.getElementById('draw-count');
+        const messageBoxEl = document.getElementById('message-box');
+        const startButton = document.getElementById('start-button');
+        const drawButton = document.getElementById('draw-button');
+        const p1CountEl = document.getElementById('p1-count');
+        const drawDeckEl = document.getElementById('draw-deck');
+
+        const CARD_COLORS = {
+            'R': 'bg-red-600',
+            'G': 'bg-green-600',
+            'B': 'bg-blue-600',
+            'Y': 'bg-yellow-500'
+        };
+
+        // --- Helper Functions ---
+
+        /** Utility to shuffle an array (Fisher-Yates) */
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+        }
+
+        /** Creates a visual HTML element for a card */
+        function createCardElement(card) {
+            const color = card[0];
+            const number = card.substring(1);
+            
+            const cardEl = document.createElement('div');
+            cardEl.className = `card ${CARD_COLORS[color] || 'bg-gray-400'} shadow-md`;
+            cardEl.textContent = card;
+            cardEl.setAttribute('data-card', card);
+            
+            if (isPlayerTurn) {
+                // Add click handler only during player's turn
+                cardEl.onclick = () => handlePlayerTurn(card);
+            } else {
+                cardEl.style.cursor = 'default';
+            }
+
+            return cardEl;
+        }
+
+        /** Checks if a player's card is playable against the top card */
+        function isValidPlay(card, currentTopCard) {
+            if (!currentTopCard) return true; // Should only happen at start
+            return card[0] === currentTopCard[0] || card.substring(1) === currentTopCard.substring(1);
+        }
+
+        /** Updates all visual elements on the page */
+        function displayGame() {
+            // Update Top Card
+            if (topCard) {
+                // FIX: Only attempt to access topCard properties if it is not null
+                topCardEl.className = `card ${CARD_COLORS[topCard[0]] || 'bg-gray-400'} text-3xl`;
+                topCardEl.textContent = topCard;
+            } else {
+                // Set default display when game hasn't started
+                topCardEl.className = `card bg-gray-400 text-3xl`;
+                topCardEl.textContent = '?';
+            }
+
+            // Update Player 1 Hand
+            playerHandEl.innerHTML = '';
+            player1Hand.forEach(card => {
+                playerHandEl.appendChild(createCardElement(card));
+            });
+            p1CountEl.textContent = player1Hand.length;
+
+            // Update Counts
+            p2CountEl.textContent = player2Hand.length;
+            drawCountEl.textContent = drawPile.length;
+
+            // Update Draw Button state
+            if (isPlayerTurn && drawPile.length > 0) {
+                drawButton.classList.remove('opacity-50', 'cursor-not-allowed');
+                drawButton.disabled = false;
+            } else {
+                drawButton.classList.add('opacity-50', 'cursor-not-allowed');
+                drawButton.disabled = true;
+            }
+        }
+
+        /** Shows the win/loss modal */
+        function showModal(title, body) {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-body').textContent = body;
+            document.getElementById('modal').classList.remove('hidden');
+            document.getElementById('modal').classList.add('flex');
+        }
+
+        // --- Game Logic ---
+
+        function startGame() {
+            // Reset state
+            player1Hand = [];
+            player2Hand = [];
+            drawPile = [];
+            topCard = null;
+
+            const cards = [
+                'R0','R1','R2','R3','R4','R5','R6','R7','R8','R9',
+                'G0','G1','G2','G3','G4','G5','G6','G7','G8','G9',
+                'B0','B1','B2','B3','B4','B5','B6','B7','B8','B9',
+                'Y0','Y1','Y2','Y3','Y4','Y5','Y6','Y7','Y8','Y9'
+            ];
+            
+            shuffle(cards);
+            
+            // Deal 7 cards to each player
+            for (let i = 0; i < 7; i++) {
+                player1Hand.push(cards.pop());
+                player2Hand.push(cards.pop());
+            }
+            
+            // Set the draw pile and the initial top card
+            drawPile = cards;
+            topCard = drawPile.pop();
+
+            // Setup UI and start P1's turn
+            startButton.disabled = true;
+            startButton.classList.add('opacity-50', 'cursor-not-allowed');
+            isPlayerTurn = true;
+            
+            displayGame();
+            messageBoxEl.textContent = "Game started! Your turn. Play a card or Draw.";
+            drawDeckEl.onclick = () => handlePlayerTurn('DRAW');
+        }
+
+        function checkWin() {
+            if (player1Hand.length === 0) {
+                showModal("You Win!", "Congratulations! You played all your cards first.");
+                return true;
+            }
+            if (player2Hand.length === 0) {
+                showModal("You Lose!", "Player 2 beat you to the finish line.");
+                return true;
+            }
+            return false;
+        }
+
+        function handleDraw() {
+            if (drawPile.length > 0) {
+                const newCard = drawPile.pop();
+                player1Hand.push(newCard);
+                messageBoxEl.textContent = `You drew ${newCard}. Turn skipped.`;
+                displayGame();
+                // Proceed to AI turn after a short delay
+                setTimeout(handleAITurn, 1500);
+            } else {
+                messageBoxEl.textContent = "Draw pile is empty! Turn skipped.";
+                setTimeout(handleAITurn, 1500);
+            }
+            isPlayerTurn = false;
+            displayGame();
+        }
+
+        function handlePlayerTurn(cardName) {
+            if (!isPlayerTurn) {
+                messageBoxEl.textContent = "Please wait for Player 2 to finish their turn.";
+                return;
+            }
+
+            // 1. Handle DRAW command
+            if (cardName === 'DRAW' || cardName === 'DRAW-BUTTON') {
+                handleDraw();
+                return;
+            }
+
+            // 2. Handle PLAY card command
+            const cardIndex = player1Hand.indexOf(cardName);
+            
+            if (cardIndex === -1) {
+                // Should not happen if clicking on an element, but useful for robustness
+                messageBoxEl.textContent = "That card is not in your hand.";
+                return;
+            }
+            
+            if (isValidPlay(cardName, topCard)) {
+                // Valid play
+                player1Hand.splice(cardIndex, 1);
+                topCard = cardName;
+                messageBoxEl.textContent = `You played ${cardName}.`;
+                
+                isPlayerTurn = false;
+                displayGame();
+
+                if (!checkWin()) {
+                    // Proceed to AI turn after a short delay
+                    setTimeout(handleAITurn, 1500);
+                }
+                
+            } else {
+                // Invalid play
+                messageBoxEl.textContent = `Invalid card. ${cardName} does not match the color or number of ${topCard}.`;
+            }
+        }
+
+        function handleAITurn() {
+            messageBoxEl.textContent = "Player 2 is thinking...";
+            displayGame(); // Disable player controls immediately
+
+            setTimeout(() => {
+                const validCards = player2Hand.filter(card => isValidPlay(card, topCard));
+
+                if (validCards.length > 0) {
+                    // AI plays a card
+                    const cardToPlay = validCards[Math.floor(Math.random() * validCards.length)];
+                    player2Hand.splice(player2Hand.indexOf(cardToPlay), 1);
+                    topCard = cardToPlay;
+                    messageBoxEl.textContent = `Player 2 played ${cardToPlay}.`;
+                } else if (drawPile.length > 0) {
+                    // AI draws a card
+                    const newCard = drawPile.pop();
+                    player2Hand.push(newCard);
+                    messageBoxEl.textContent = "Player 2 drew a card.";
+                } else {
+                    // AI skips turn
+                    messageBoxEl.textContent = "Player 2 had no cards and draw pile is empty. Skipping turn.";
+                }
+
+                displayGame();
+
+                if (!checkWin()) {
+                    // Start Player 1's turn
+                    isPlayerTurn = true;
+                    messageBoxEl.textContent += " Your turn!";
+                    displayGame(); // Re-enable player controls
+                }
+            }, 1500); // 1.5 second delay for AI turn simulation
+        }
+
+        // --- Event Listeners ---
+        startButton.addEventListener('click', startGame);
+        drawButton.addEventListener('click', () => handlePlayerTurn('DRAW-BUTTON'));
+        drawDeckEl.addEventListener('click', () => {
+            if(isPlayerTurn) {
+                handlePlayerTurn('DRAW-BUTTON');
+            }
+        });
+
+        // Initial setup on load
+        document.addEventListener('DOMContentLoaded', () => {
+            displayGame(); // Show initial zero counts and safe top card
+        });
+
+    </script>
+</body>
+</html>
