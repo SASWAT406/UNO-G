@@ -1,289 +1,272 @@
-/* --- GEMINI CONFIG (Paste Key Below) --- */
+/* --- GEMINI CONFIG --- */
 const GEMINI_API_KEY = ""; 
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_API_KEY}`;
 
-/* --- GAME VARIABLES --- */
-let play1 = [], play2 = [], drawPile = [];
+/* --- GAME STATE --- */
+let players = []; // Array of hands. Index 0 is Human.
+let totalPlayers = 2; // Default
+let currentPlayer = 0; // Index of current player
+let direction = 1; // 1 = Clockwise, -1 = Counter-Clockwise
+let drawPile = [];
 let topCard = '';
-let isPlayerTurn = false;
 let gameActive = false;
 let pendingWildCard = null;
 let canPlayAfterDraw = false;
 
-// Card Deck Definition
 const CARDS = [
     'R0', 'G0', 'B0', 'Y0',
     ...['R','G','B','Y'].flatMap(c => Array(2).fill().flatMap((_,i) => Array(9).fill().map((_,j) => c+(j+1)))),
     ...['R','G','B','Y'].flatMap(c => Array(2).fill(c+'-D2')),
+    ...['R','G','B','Y'].flatMap(c => Array(2).fill(c+'-S')), // Skip
+    ...['R','G','B','Y'].flatMap(c => Array(2).fill(c+'-R')), // Reverse
     ...Array(4).fill('W-W'), ...Array(4).fill('W-D4')
 ];
 
-/* --- UI HELPERS --- */
-function switchScene(fromId, toId) {
-    document.getElementById(fromId).classList.remove('active');
-    setTimeout(() => {
-        document.getElementById(toId).classList.add('active');
-    }, 500);
+/* --- SETUP --- */
+function selectPlayerCount(num) {
+    totalPlayers = num;
+    document.querySelectorAll('.p-sel-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById(`btn-p${num}`).classList.add('active');
 }
-
-function showToast(msg) {
-    const toast = document.getElementById('toast');
-    const txt = document.getElementById('toast-msg');
-    txt.textContent = msg;
-    toast.style.opacity = '1';
-    toast.style.transform = 'translate(-50%, -50%) scale(1)';
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translate(-50%, -150%) scale(0.9)';
-    }, 2000);
-}
-
-function getCardParts(code) {
-    if (!code) return { color: 'gray', value: '?', display: '?' };
-    
-    let colorCode = code.startsWith('W-') && code.length > 2 ? code[2] : (code[0] || 'W');
-    let valueRaw = code.startsWith('W-') && code.length > 4 ? code.substring(4) : (code.includes('-') ? code.substring(2) : code.substring(1));
-    
-    let display = valueRaw;
-    if(valueRaw === 'D2') display = '+2';
-    if(valueRaw === 'D4') display = '+4';
-    
-    return { color: colorCode, value: valueRaw, display: display };
-}
-
-function renderCardHTML(code, isPlayable, onClick) {
-    const { color, display } = getCardParts(code);
-    
-    let bgClass = 'bg-black-card';
-    let textClass = 'text-white';
-    
-    if (color === 'R') { bgClass = 'bg-red-card'; textClass = 'text-R'; }
-    if (color === 'G') { bgClass = 'bg-green-card'; textClass = 'text-G'; }
-    if (color === 'B') { bgClass = 'bg-blue-card'; textClass = 'text-B'; }
-    if (color === 'Y') { bgClass = 'bg-yellow-card'; textClass = 'text-Y'; }
-    if (color === 'W') { bgClass = 'bg-wild-card'; textClass = 'text-W'; }
-
-    return `
-    <div class="uno-card ${bgClass} ${isPlayable ? 'card-clickable' : 'opacity-70 grayscale-[0.3]'} transform transition-transform" 
-         style="margin-right: -45px;"
-         onclick="${isPlayable ? onClick : ''}">
-        <span class="card-corner top-left">${display}</span>
-        <div class="card-oval"><span class="card-main-value ${textClass}">${display}</span></div>
-        <span class="card-corner bottom-right">${display}</span>
-    </div>`;
-}
-
-/* --- GAME ENGINE --- */
 
 function startGame() {
     let deck = [...CARDS].sort(() => Math.random() - 0.5);
-    play1 = deck.splice(0, 7);
-    play2 = deck.splice(0, 7);
+    
+    // Init Players
+    players = [];
+    for(let i=0; i<totalPlayers; i++) {
+        players.push(deck.splice(0, 7));
+    }
+    
     drawPile = deck;
+    direction = 1;
+    currentPlayer = 0; // Human starts
 
-    // First card logic
+    // Setup Top Card
     do {
         topCard = drawPile.pop();
-        if(topCard.includes('-D') || topCard.startsWith('W-D4')) {
-            drawPile.unshift(topCard); 
+        // Prevent complex start cards
+        if(topCard.includes('-') || topCard.startsWith('W')) {
+            drawPile.unshift(topCard);
             drawPile.sort(() => Math.random() - 0.5);
             topCard = '';
         }
     } while(!topCard);
 
-    // Handle initial Wild (W-W)
-    if(topCard === 'W-W') {
-         const colors = ['R','G','B','Y'];
-         const randColor = colors[Math.floor(Math.random()*4)];
-         topCard = `W-${randColor}-W`;
-    }
-
     gameActive = true;
-    isPlayerTurn = true;
+    canPlayAfterDraw = false;
     
-    switchScene('scene-menu', 'scene-game');
+    // UI Setup
+    document.getElementById('scene-menu').classList.remove('active');
+    setTimeout(() => document.getElementById('scene-game').classList.add('active'), 500);
+    
+    generateOpponentsUI();
     renderGame();
     showToast("Your Turn!");
 }
 
+/* --- GAME LOGIC --- */
+function nextTurn(skip = false) {
+    let steps = skip ? 2 : 1;
+    currentPlayer = (currentPlayer + (direction * steps)) % totalPlayers;
+    if(currentPlayer < 0) currentPlayer += totalPlayers;
+
+    renderGame();
+
+    // Check if Bot's turn
+    if(currentPlayer !== 0 && gameActive) {
+        setTimeout(botTurn, 1500);
+    } else if (currentPlayer === 0) {
+        showToast("Your Turn");
+    }
+}
+
+function handlePostPlay(card) {
+    if(checkWin(currentPlayer)) return;
+
+    let { value } = getCardParts(card);
+    let skipNext = false;
+
+    // Special Cards
+    if(value === 'S') { // Skip
+        skipNext = true;
+        showToast("Skip!");
+    } else if (value === 'R') { // Reverse
+        if(totalPlayers === 2) {
+            skipNext = true; // Acts like Skip in 1v1
+            showToast("Reverse (Skip)!");
+        } else {
+            direction *= -1;
+            showToast("Direction Reversed!");
+            // Visual indicator update
+            document.getElementById('direction-indicator').style.transform = `scaleY(${direction})`;
+        }
+    } else if (value === 'D2') {
+        giveCardsToNext(2);
+        skipNext = true;
+        showToast("Draw 2 & Skip!");
+    } else if (value === 'D4') {
+        giveCardsToNext(4);
+        skipNext = true;
+        showToast("Draw 4 & Skip!");
+    }
+
+    // Move to next player
+    nextTurn(skipNext);
+}
+
+function giveCardsToNext(count) {
+    // Determine victim index
+    let victimIdx = (currentPlayer + direction) % totalPlayers;
+    if(victimIdx < 0) victimIdx += totalPlayers;
+    
+    for(let i=0; i<count; i++) {
+        if(drawPile.length === 0) reshuffle();
+        players[victimIdx].push(drawPile.pop());
+    }
+}
+
 function playCard(card) {
-    if(!gameActive || !isPlayerTurn || pendingWildCard) return;
+    if(!gameActive || currentPlayer !== 0 || pendingWildCard) return;
 
     const { color: cC, value: cV } = getCardParts(card);
     const { color: tC, value: tV } = getCardParts(topCard);
 
-    // Validation
-    const isValid = (cC === 'W') || (cC === tC) || (cV === tV);
-    if(!isValid) return;
+    if (cC !== 'W' && cC !== tC && cV !== tV) return;
 
-    // Remove from hand
-    play1.splice(play1.indexOf(card), 1);
+    // Remove card
+    let hand = players[0];
+    hand.splice(hand.indexOf(card), 1);
     canPlayAfterDraw = false;
 
-    // Check Wild
     if(card.startsWith('W')) {
         pendingWildCard = card;
         document.getElementById('modal-color').classList.remove('hidden');
         document.getElementById('modal-color').classList.add('flex');
         renderGame();
-        return;
+    } else {
+        topCard = card;
+        handlePostPlay(card);
     }
-
-    // Normal Play
-    topCard = card;
-    handlePostPlay(card, 'P1');
 }
 
 function selectWildColor(color) {
-    const rawVal = getCardParts(pendingWildCard).value;
-    topCard = `W-${color}-${rawVal}`; // e.g., W-R-D4
+    let rawVal = getCardParts(pendingWildCard).value;
+    topCard = `W-${color}-${rawVal}`;
     pendingWildCard = null;
-    
     document.getElementById('modal-color').classList.add('hidden');
     document.getElementById('modal-color').classList.remove('flex');
-
-    handlePostPlay(topCard, 'P1');
-}
-
-function handlePostPlay(card, player) {
-    if(checkWin()) return;
-
-    const { value } = getCardParts(card);
-    let skipTurn = false;
-    let opponent = player === 'P1' ? play2 : play1;
-
-    if(value === 'D2') {
-        opponent.push(drawPile.pop(), drawPile.pop());
-        showToast(player === 'P1' ? "Bot Draws 2!" : "You Draw 2!");
-        skipTurn = true;
-    } else if(value === 'D4') {
-         for(let i=0; i<4; i++) if(drawPile.length) opponent.push(drawPile.pop());
-         showToast(player === 'P1' ? "Bot Draws 4!" : "You Draw 4!");
-         skipTurn = true;
-    }
-
-    renderGame();
-
-    if(skipTurn) {
-        if(player === 'P1') {
-            showToast("Play Again!");
-            isPlayerTurn = true; 
-            renderGame();
-        } else {
-            showToast("Bot Plays Again!");
-            setTimeout(botTurn, 1500);
-        }
-    } else {
-        // Switch Turn
-        if(player === 'P1') {
-            isPlayerTurn = false;
-            document.getElementById('bot-status').textContent = "Thinking...";
-            renderGame();
-            setTimeout(botTurn, 1500);
-        } else {
-            isPlayerTurn = true;
-            document.getElementById('bot-status').textContent = "Waiting...";
-            showToast("Your Turn");
-            renderGame();
-        }
-    }
-}
-
-function drawCard() {
-    if(!gameActive || !isPlayerTurn || canPlayAfterDraw) return;
-    
-    if(drawPile.length === 0) {
-        drawPile = [...CARDS].sort(()=>Math.random()-0.5); 
-    }
-
-    const newCard = drawPile.pop();
-    play1.push(newCard);
-    canPlayAfterDraw = true;
-    showToast("Drew Card");
-    
-    // Auto scroll
-    const box = document.getElementById('player-cards');
-    setTimeout(() => box.scrollLeft = box.scrollWidth, 100);
-    
-    renderGame();
-}
-
-function skipDrawnTurn() {
-    canPlayAfterDraw = false;
-    isPlayerTurn = false;
-    document.getElementById('bot-status').textContent = "Thinking...";
-    renderGame();
-    setTimeout(botTurn, 1000);
+    handlePostPlay(topCard);
 }
 
 function botTurn() {
-    if(!gameActive) return;
+    if(!gameActive || currentPlayer === 0) return;
 
-    // 1. Filter Playable
-    const { color: tC, value: tV } = getCardParts(topCard);
-    const playable = play2.filter(c => {
-        const { color: cC, value: cV } = getCardParts(c);
-        return cC === 'W' || cC === tC || cV === tV;
+    let hand = players[currentPlayer];
+    let { color: tC, value: tV } = getCardParts(topCard);
+    
+    // Find Playable
+    let playable = hand.filter(c => {
+        let p = getCardParts(c);
+        return p.color === 'W' || p.color === tC || p.value === tV;
     });
 
     if(playable.length > 0) {
-        // Simple AI: Prioritize Actions -> Numbers
-        playable.sort((a,b) => {
-            if(a.includes('D4')) return -1;
-            if(b.includes('D4')) return 1;
-            return 0;
-        });
+        // Strategy: Save Wilds, play Action/Number
+        playable.sort((a,b) => (a.includes('D4') || a.includes('W')) ? 1 : -1);
+        let choice = playable[0];
         
-        const choice = playable[0];
-        play2.splice(play2.indexOf(choice), 1);
-        
-        // Handle Wild Choice
+        hand.splice(hand.indexOf(choice), 1);
+
         if(choice.startsWith('W')) {
-            const colors = ['R','G','B','Y'];
-            const picked = colors[Math.floor(Math.random()*4)];
-            const rawVal = getCardParts(choice).value;
-            topCard = `W-${picked}-${rawVal}`;
+            // Bot picks random color
+            let colors = ['R','G','B','Y'];
+            let pick = colors[Math.floor(Math.random()*4)];
+            let raw = getCardParts(choice).value;
+            topCard = `W-${pick}-${raw}`;
+            showToast(`Bot ${currentPlayer} picked ${pick}`);
         } else {
             topCard = choice;
         }
         
-        handlePostPlay(topCard, 'Bot');
-
+        handlePostPlay(topCard);
     } else {
-        // Bot Draws
-        if(drawPile.length) {
-            play2.push(drawPile.pop());
-            showToast("Bot Drew Card");
-        }
-        isPlayerTurn = true;
-        document.getElementById('bot-status').textContent = "Waiting...";
-        renderGame();
+        // Draw
+        drawOne(currentPlayer);
+        // Bot plays drawn card if possible? Simplified: Bot just passes after draw.
+        nextTurn(false); 
     }
 }
 
-function checkWin() {
-    if(play1.length === 0) {
-        document.getElementById('winner-text').textContent = "YOU WIN!";
+function drawCard() {
+    if(!gameActive || currentPlayer !== 0 || canPlayAfterDraw) return;
+    drawOne(0);
+    canPlayAfterDraw = true;
+    showToast("You Drew");
+    renderGame();
+    // Auto scroll
+    setTimeout(() => document.getElementById('player-cards').scrollLeft = 1000, 100);
+}
+
+function drawOne(pIdx) {
+    if(drawPile.length === 0) reshuffle();
+    players[pIdx].push(drawPile.pop());
+}
+
+function skipDrawnTurn() {
+    if(!canPlayAfterDraw) return;
+    canPlayAfterDraw = false;
+    nextTurn(false);
+}
+
+function reshuffle() {
+    drawPile = [...CARDS].sort(()=>Math.random()-0.5); // Simplified reshuffle
+}
+
+function checkWin(pIdx) {
+    if(players[pIdx].length === 0) {
+        gameActive = false;
+        let msg = pIdx === 0 ? "YOU WIN!" : `BOT ${pIdx} WINS!`;
+        document.getElementById('winner-text').textContent = msg;
         document.getElementById('modal-gameover').classList.remove('hidden');
         document.getElementById('modal-gameover').classList.add('flex');
-        gameActive = false;
-        return true;
-    }
-    if(play2.length === 0) {
-        document.getElementById('winner-text').textContent = "BOT WINS!";
-        document.getElementById('winner-text').className = "text-6xl md:text-8xl font-black text-red-500 mb-6";
-        document.getElementById('modal-gameover').classList.remove('hidden');
-        document.getElementById('modal-gameover').classList.add('flex');
-        gameActive = false;
         return true;
     }
     return false;
 }
 
-function renderGame() {
-    document.getElementById('p2-count').textContent = play2.length;
+/* --- RENDERING --- */
+function generateOpponentsUI() {
+    const container = document.getElementById('opponents-container');
+    container.innerHTML = '';
     
-    // Render Top Card
+    // Create avatars for Player 1 to Total-1
+    for(let i=1; i<totalPlayers; i++) {
+        container.innerHTML += `
+            <div id="opp-${i}" class="opponent-box">
+                <div class="bot-avatar">🤖</div>
+                <div class="text-[10px] font-bold text-gray-400 mb-1">BOT ${i}</div>
+                <div class="text-xl font-black text-white leading-none" id="count-${i}">7</div>
+            </div>
+        `;
+    }
+}
+
+function renderGame() {
+    // Update Counts & Active Status
+    for(let i=1; i<totalPlayers; i++) {
+        document.getElementById(`count-${i}`).textContent = players[i].length;
+        let box = document.getElementById(`opp-${i}`);
+        if(currentPlayer === i) box.classList.add('active-player');
+        else box.classList.remove('active-player');
+    }
+    
+    // Update Hand BG for Player Turn
+    const handBg = document.getElementById('player-hand-bg');
+    if(currentPlayer === 0) handBg.classList.add('border-yellow-400', 'bg-white/10');
+    else handBg.classList.remove('border-yellow-400', 'bg-white/10');
+
+    // Top Card
     const topDiv = document.getElementById('top-card-container');
     if(topCard) {
         topDiv.innerHTML = renderCardHTML(topCard, false, '');
@@ -292,51 +275,65 @@ function renderGame() {
         topDiv.firstElementChild.classList.remove('opacity-70', 'grayscale-[0.3]');
     }
 
-    // Render Hand
+    // Player Hand
     const handDiv = document.getElementById('player-cards');
     handDiv.innerHTML = '';
-    
-    // Sort hand: Color then Value
-    play1.sort();
+    let hand = [...players[0]].sort(); // Sort for display
+    let { color: tC, value: tV } = getCardParts(topCard);
 
-    const { color: tC, value: tV } = getCardParts(topCard);
-    
-    play1.forEach(c => {
-        const { color: cC, value: cV } = getCardParts(c);
-        // Check playability
-        const isMatch = (cC === 'W') || (cC === tC) || (cV === tV);
-        const canPlay = isPlayerTurn && !pendingWildCard && (isMatch || canPlayAfterDraw);
-        
-        handDiv.innerHTML += renderCardHTML(c, canPlay, `playCard('${c}')`);
+    hand.forEach(c => {
+        let { color: cC, value: cV } = getCardParts(c);
+        let match = (cC === 'W' || cC === tC || cV === tV);
+        let playable = (currentPlayer === 0) && !pendingWildCard && (match || canPlayAfterDraw);
+        handDiv.innerHTML += renderCardHTML(c, playable, `playCard('${c}')`);
     });
 
-    // Button States
+    // Buttons
     document.getElementById('skip-btn').disabled = !canPlayAfterDraw;
-    document.getElementById('draw-btn-container').style.opacity = (isPlayerTurn && !canPlayAfterDraw) ? '1' : '0.5';
-    document.getElementById('draw-btn-container').style.pointerEvents = (isPlayerTurn && !canPlayAfterDraw) ? 'auto' : 'none';
+    document.getElementById('draw-btn-container').style.opacity = (currentPlayer === 0 && !canPlayAfterDraw) ? '1' : '0.5';
+    document.getElementById('draw-btn-container').style.pointerEvents = (currentPlayer === 0 && !canPlayAfterDraw) ? 'auto' : 'none';
 }
 
+/* --- UTILS --- */
+function getCardParts(code) {
+    if (!code) return { color: 'gray', value: '?', display: '?' };
+    let color = code.startsWith('W-') && code.length > 2 ? code[2] : (code[0] || 'W');
+    let val = code.startsWith('W-') && code.length > 4 ? code.substring(4) : (code.includes('-') ? code.substring(2) : code.substring(1));
+    let disp = val;
+    if(val==='D2') disp='+2'; if(val==='D4') disp='+4'; if(val==='S') disp='⊘'; if(val==='R') disp='⇄';
+    return { color, value: val, display: disp };
+}
+
+function renderCardHTML(code, isPlayable, onClick) {
+    const { color, display } = getCardParts(code);
+    let bg = 'bg-black-card', txt = 'text-white';
+    if(color==='R'){bg='bg-red-card';txt='text-R'} if(color==='G'){bg='bg-green-card';txt='text-G'}
+    if(color==='B'){bg='bg-blue-card';txt='text-B'} if(color==='Y'){bg='bg-yellow-card';txt='text-Y'}
+    if(color==='W'){bg='bg-wild-card';txt='text-W'}
+    
+    return `<div class="uno-card ${bg} ${isPlayable?'card-clickable':'opacity-70 grayscale-[0.3]'} transition-transform" style="margin-right:-45px;" onclick="${isPlayable?onClick:''}"><span class="card-corner top-left">${display}</span><div class="card-oval"><span class="card-main-value ${txt}">${display}</span></div><span class="card-corner bottom-right">${display}</span></div>`;
+}
+
+function showToast(msg) {
+    let t = document.getElementById('toast');
+    document.getElementById('toast-msg').textContent = msg;
+    t.style.opacity = '1'; t.style.transform = 'translate(-50%, -50%)';
+    setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translate(-50%, -150%)'; }, 2000);
+}
+
+/* --- GEMINI AI --- */
 async function getStrategyAdvice() {
+    if(currentPlayer !== 0) return;
     const btn = document.getElementById('strategy-btn');
     const out = document.getElementById('strategy-output');
-    if(!isPlayerTurn) return;
-    
-    btn.disabled = true;
-    out.textContent = "Analyzing...";
-    
-    const handStr = play1.join(',');
-    const prompt = `UNO strategy. Top: ${topCard}. Hand: ${handStr}. Suggest 1 best card code to play or 'Draw'. Max 5 words.`;
-
+    btn.disabled = true; out.textContent = "Analyzing...";
     try {
         const res = await fetch(GEMINI_API_URL, {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ contents: [{ parts: [{ text: `UNO Strategy. Top: ${topCard}. Hand: ${players[0].join(',')}. 1 sentence advice.` }] }] })
         });
-        const data = await res.json();
-        out.textContent = data.candidates[0].content.parts[0].text;
-    } catch(e) {
-        out.textContent = "AI Error";
-    }
+        const d = await res.json();
+        out.textContent = d.candidates[0].content.parts[0].text;
+    } catch(e) { out.textContent = "Error"; }
     btn.disabled = false;
 }
