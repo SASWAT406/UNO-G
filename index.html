@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>UNO Ultimate - Web Edition</title>
+    <title>UNO Ultimate - Multiplayer</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Titan+One&family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
@@ -12,8 +12,17 @@
 
     <div id="scene-menu" class="scene active bg-black/50 backdrop-blur-sm z-50">
         <h1 class="text-7xl md:text-9xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 via-red-500 to-pink-500 mb-2 transform -rotate-6 filter drop-shadow-lg">UNO</h1>
-        <p class="text-xl text-blue-200 mb-10 font-bold tracking-widest">WEB EDITION</p>
+        <p class="text-xl text-blue-200 mb-8 font-bold tracking-widest">WEB EDITION</p>
         
+        <div class="mb-8 text-center">
+            <p class="text-blue-300 text-xs font-bold uppercase tracking-widest mb-3">Select Players</p>
+            <div class="flex gap-4 bg-white/10 p-2 rounded-2xl border border-white/10">
+                <button onclick="selectPlayerCount(2)" id="btn-p2" class="p-sel-btn active">2 Players</button>
+                <button onclick="selectPlayerCount(3)" id="btn-p3" class="p-sel-btn">3 Players</button>
+                <button onclick="selectPlayerCount(4)" id="btn-p4" class="p-sel-btn">4 Players</button>
+            </div>
+        </div>
+
         <button onclick="startGame()" class="group relative px-10 py-5 bg-white text-black font-black text-2xl rounded-full shadow-[0_0_40px_rgba(255,255,255,0.4)] transition-all hover:scale-110 hover:shadow-[0_0_60px_rgba(255,255,255,0.6)]">
             <span class="relative z-10">PLAY NOW</span>
             <div class="absolute inset-0 rounded-full bg-gradient-to-r from-blue-400 to-purple-500 opacity-0 group-hover:opacity-20 transition-opacity"></div>
@@ -22,22 +31,12 @@
 
     <div id="scene-game" class="scene flex flex-col justify-between p-4 h-full">
         
-        <div class="w-full max-w-4xl mx-auto flex justify-between items-center bg-white/5 p-3 rounded-2xl border border-white/10 backdrop-blur-md">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center text-xl shadow-inner">🤖</div>
-                <div>
-                    <h2 class="font-bold text-sm md:text-base text-white leading-tight">Bot</h2>
-                    <p class="text-[10px] text-blue-200 uppercase tracking-wider" id="bot-status">Waiting...</p>
+        <div class="w-full max-w-5xl mx-auto mb-4">
+            <div id="opponents-container" class="flex justify-center gap-4 md:gap-8">
                 </div>
-            </div>
-            <div class="bg-black/40 px-4 py-2 rounded-xl">
-                <span class="text-xs text-gray-400 block text-center">CARDS</span>
-                <span id="p2-count" class="text-2xl font-black text-red-400 block text-center leading-none">7</span>
-            </div>
         </div>
 
         <div class="flex-grow flex flex-col md:flex-row items-center justify-center gap-8 md:gap-24 relative py-4">
-            
             <div class="relative group">
                 <div id="draw-btn-container" onclick="drawCard()" class="uno-card card-back cursor-pointer transition-transform active:scale-95 hover:scale-105 shadow-xl"></div>
                 <div class="absolute -bottom-6 w-full text-center">
@@ -46,11 +45,14 @@
             </div>
 
             <div class="relative">
-                <div id="top-card-container" class="relative z-10 transition-all duration-300">
-                    </div>
+                <div id="top-card-container" class="relative z-10 transition-all duration-300"></div>
                 <div class="absolute -bottom-6 w-full text-center">
                     <span class="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Play Pile</span>
                 </div>
+            </div>
+            
+            <div id="direction-indicator" class="absolute pointer-events-none text-white/10 text-9xl font-black transition-transform duration-500">
+                ↻
             </div>
 
             <div id="toast" class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-[150%] pointer-events-none transition-all duration-300 opacity-0 z-50">
@@ -61,7 +63,6 @@
         </div>
 
         <div class="w-full max-w-5xl mx-auto relative z-20">
-            
             <div class="flex justify-center gap-3 mb-3">
                 <button id="strategy-btn" onclick="getStrategyAdvice()" class="bg-purple-600 hover:bg-purple-500 text-white px-5 py-2 rounded-full font-bold shadow-lg text-xs md:text-sm flex items-center gap-2 transition-all">
                     <span>💡</span> Hint
@@ -69,16 +70,13 @@
                 <button id="skip-btn" onclick="skipDrawnTurn()" disabled class="bg-gray-600 hover:bg-gray-500 text-white px-5 py-2 rounded-full font-bold shadow-lg text-xs md:text-sm transition-all disabled:opacity-40 disabled:cursor-not-allowed">
                     Skip Turn
                 </button>
-                <button onclick="location.reload()" class="bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-full font-bold shadow-lg text-xs transition-all">
-                    Exit
-                </button>
+                <button onclick="location.reload()" class="bg-white/10 hover:bg-white/20 text-white px-3 py-2 rounded-full font-bold shadow-lg text-xs transition-all">Exit</button>
             </div>
             
             <div id="strategy-output" class="text-center h-5 text-purple-300 text-xs font-bold mb-1"></div>
 
-            <div class="bg-white/5 backdrop-blur-md border-t border-white/10 rounded-t-3xl p-4 shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
-                <div id="player-cards" class="flex overflow-x-auto gap-[-30px] px-4 pb-2 pt-2 snap-x" style="scrollbar-width: none;">
-                    </div>
+            <div class="bg-white/5 backdrop-blur-md border-t border-white/10 rounded-t-3xl p-4 shadow-[0_-10px_30px_rgba(0,0,0,0.5)] transition-colors" id="player-hand-bg">
+                <div id="player-cards" class="flex overflow-x-auto gap-[-30px] px-4 pb-2 pt-2 snap-x" style="scrollbar-width: none;"></div>
                 <div class="text-center mt-1">
                     <span class="text-[10px] text-white/30 uppercase tracking-widest">Your Hand</span>
                 </div>
@@ -89,15 +87,15 @@
     <div id="modal-color" class="fixed inset-0 bg-black/90 z-50 hidden flex-col items-center justify-center backdrop-blur-md">
         <h2 class="text-3xl font-black text-white mb-8 animate-bounce">Pick a Color</h2>
         <div class="grid grid-cols-2 gap-4">
-            <button onclick="selectWildColor('R')" class="w-24 h-24 rounded-xl bg-gradient-to-br from-red-500 to-red-700 shadow-lg shadow-red-500/50 hover:scale-110 transition-transform font-black">RED</button>
-            <button onclick="selectWildColor('B')" class="w-24 h-24 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 shadow-lg shadow-blue-500/50 hover:scale-110 transition-transform font-black">BLUE</button>
-            <button onclick="selectWildColor('G')" class="w-24 h-24 rounded-xl bg-gradient-to-br from-green-500 to-green-700 shadow-lg shadow-green-500/50 hover:scale-110 transition-transform font-black">GREEN</button>
-            <button onclick="selectWildColor('Y')" class="w-24 h-24 rounded-xl bg-gradient-to-br from-yellow-400 to-yellow-600 shadow-lg shadow-yellow-500/50 hover:scale-110 transition-transform font-black">YELL</button>
+            <button onclick="selectWildColor('R')" class="w-24 h-24 rounded-xl bg-gradient-to-br from-red-500 to-red-700 shadow-lg font-black">RED</button>
+            <button onclick="selectWildColor('B')" class="w-24 h-24 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 shadow-lg font-black">BLUE</button>
+            <button onclick="selectWildColor('G')" class="w-24 h-24 rounded-xl bg-gradient-to-br from-green-500 to-green-700 shadow-lg font-black">GREEN</button>
+            <button onclick="selectWildColor('Y')" class="w-24 h-24 rounded-xl bg-gradient-to-br from-yellow-400 to-yellow-600 shadow-lg font-black">YELL</button>
         </div>
     </div>
 
     <div id="modal-gameover" class="fixed inset-0 bg-black/95 z-50 hidden flex-col items-center justify-center">
-        <h1 id="winner-text" class="text-6xl md:text-8xl font-black text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500 mb-6 drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]">YOU WIN!</h1>
+        <h1 id="winner-text" class="text-6xl md:text-8xl font-black text-white mb-6">WINNER!</h1>
         <button onclick="location.reload()" class="px-8 py-3 bg-white text-black font-black rounded-full hover:scale-105 transition-transform">PLAY AGAIN</button>
     </div>
 
