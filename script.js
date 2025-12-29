@@ -3,16 +3,17 @@ const GEMINI_API_KEY = "";
 const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_API_KEY}`;
 
 /* --- GAME STATE --- */
-let players = []; // Array of hands. Index 0 is Human.
-let totalPlayers = 2; // Default
-let currentPlayer = 0; // Index of current player
-let direction = 1; // 1 = Clockwise, -1 = Counter-Clockwise
+let players = []; 
+let totalPlayers = 2; 
+let currentPlayer = 0; 
+let direction = 1; 
 let drawPile = [];
 let topCard = '';
 let gameActive = false;
 let pendingWildCard = null;
 let canPlayAfterDraw = false;
 
+// Card Definitions
 const CARDS = [
     'R0', 'G0', 'B0', 'Y0',
     ...['R','G','B','Y'].flatMap(c => Array(2).fill().flatMap((_,i) => Array(9).fill().map((_,j) => c+(j+1)))),
@@ -42,10 +43,9 @@ function startGame() {
     direction = 1;
     currentPlayer = 0; // Human starts
 
-    // Setup Top Card
+    // Setup Top Card (Ensure no Wild/+4 start)
     do {
         topCard = drawPile.pop();
-        // Prevent complex start cards
         if(topCard.includes('-') || topCard.startsWith('W')) {
             drawPile.unshift(topCard);
             drawPile.sort(() => Math.random() - 0.5);
@@ -98,7 +98,6 @@ function handlePostPlay(card) {
         } else {
             direction *= -1;
             showToast("Direction Reversed!");
-            // Visual indicator update
             document.getElementById('direction-indicator').style.transform = `scaleY(${direction})`;
         }
     } else if (value === 'D2') {
@@ -116,7 +115,6 @@ function handlePostPlay(card) {
 }
 
 function giveCardsToNext(count) {
-    // Determine victim index
     let victimIdx = (currentPlayer + direction) % totalPlayers;
     if(victimIdx < 0) victimIdx += totalPlayers;
     
@@ -132,7 +130,9 @@ function playCard(card) {
     const { color: cC, value: cV } = getCardParts(card);
     const { color: tC, value: tV } = getCardParts(topCard);
 
-    if (cC !== 'W' && cC !== tC && cV !== tV) return;
+    // Validation
+    const isMatch = (cC === 'W') || (cC === tC) || (cV === tV);
+    if (!isMatch) return;
 
     // Remove card
     let hand = players[0];
@@ -152,6 +152,7 @@ function playCard(card) {
 
 function selectWildColor(color) {
     let rawVal = getCardParts(pendingWildCard).value;
+    // Format: W-COLOR-VALUE (e.g., W-R-D4)
     topCard = `W-${color}-${rawVal}`;
     pendingWildCard = null;
     document.getElementById('modal-color').classList.add('hidden');
@@ -179,7 +180,6 @@ function botTurn() {
         hand.splice(hand.indexOf(choice), 1);
 
         if(choice.startsWith('W')) {
-            // Bot picks random color
             let colors = ['R','G','B','Y'];
             let pick = colors[Math.floor(Math.random()*4)];
             let raw = getCardParts(choice).value;
@@ -191,9 +191,7 @@ function botTurn() {
         
         handlePostPlay(topCard);
     } else {
-        // Draw
         drawOne(currentPlayer);
-        // Bot plays drawn card if possible? Simplified: Bot just passes after draw.
         nextTurn(false); 
     }
 }
@@ -204,7 +202,6 @@ function drawCard() {
     canPlayAfterDraw = true;
     showToast("You Drew");
     renderGame();
-    // Auto scroll
     setTimeout(() => document.getElementById('player-cards').scrollLeft = 1000, 100);
 }
 
@@ -220,7 +217,7 @@ function skipDrawnTurn() {
 }
 
 function reshuffle() {
-    drawPile = [...CARDS].sort(()=>Math.random()-0.5); // Simplified reshuffle
+    drawPile = [...CARDS].sort(()=>Math.random()-0.5); 
 }
 
 function checkWin(pIdx) {
@@ -239,8 +236,6 @@ function checkWin(pIdx) {
 function generateOpponentsUI() {
     const container = document.getElementById('opponents-container');
     container.innerHTML = '';
-    
-    // Create avatars for Player 1 to Total-1
     for(let i=1; i<totalPlayers; i++) {
         container.innerHTML += `
             <div id="opp-${i}" class="opponent-box">
@@ -261,7 +256,7 @@ function renderGame() {
         else box.classList.remove('active-player');
     }
     
-    // Update Hand BG for Player Turn
+    // Update Hand BG
     const handBg = document.getElementById('player-hand-bg');
     if(currentPlayer === 0) handBg.classList.add('border-yellow-400', 'bg-white/10');
     else handBg.classList.remove('border-yellow-400', 'bg-white/10');
@@ -278,7 +273,7 @@ function renderGame() {
     // Player Hand
     const handDiv = document.getElementById('player-cards');
     handDiv.innerHTML = '';
-    let hand = [...players[0]].sort(); // Sort for display
+    let hand = [...players[0]].sort();
     let { color: tC, value: tV } = getCardParts(topCard);
 
     hand.forEach(c => {
@@ -294,21 +289,51 @@ function renderGame() {
     document.getElementById('draw-btn-container').style.pointerEvents = (currentPlayer === 0 && !canPlayAfterDraw) ? 'auto' : 'none';
 }
 
-/* --- UTILS --- */
+/* --- UTILS (FIXED) --- */
 function getCardParts(code) {
     if (!code) return { color: 'gray', value: '?', display: '?' };
-    let color = code.startsWith('W-') && code.length > 2 ? code[2] : (code[0] || 'W');
-    let val = code.startsWith('W-') && code.length > 4 ? code.substring(4) : (code.includes('-') ? code.substring(2) : code.substring(1));
+    
+    let color, val;
+    
+    // Is it a Wild?
+    if (code.startsWith('W')) {
+        // If length > 4, it means it's a played card with a color assigned (e.g., W-R-D4)
+        // If length is 3 or 4, it's a raw card (W-W or W-D4), so color is 'W'
+        if (code.length > 4) {
+            color = code[2]; 
+        } else {
+            color = 'W';
+        }
+        
+        // Value
+        if (code.includes('D4')) val = 'D4';
+        else val = 'W';
+        
+    } else {
+        // Standard Cards
+        color = code[0];
+        if (code.includes('-')) val = code.substring(2); 
+        else val = code.substring(1);
+    }
+
+    // Display Text
     let disp = val;
-    if(val==='D2') disp='+2'; if(val==='D4') disp='+4'; if(val==='S') disp='⊘'; if(val==='R') disp='⇄';
+    if (val === 'D2') disp = '+2';
+    if (val === 'D4') disp = '+4';
+    if (val === 'S') disp = '⊘';
+    if (val === 'R') disp = '⇄';
+
     return { color, value: val, display: disp };
 }
 
 function renderCardHTML(code, isPlayable, onClick) {
     const { color, display } = getCardParts(code);
     let bg = 'bg-black-card', txt = 'text-white';
-    if(color==='R'){bg='bg-red-card';txt='text-R'} if(color==='G'){bg='bg-green-card';txt='text-G'}
-    if(color==='B'){bg='bg-blue-card';txt='text-B'} if(color==='Y'){bg='bg-yellow-card';txt='text-Y'}
+    
+    if(color==='R'){bg='bg-red-card';txt='text-R'} 
+    if(color==='G'){bg='bg-green-card';txt='text-G'}
+    if(color==='B'){bg='bg-blue-card';txt='text-B'} 
+    if(color==='Y'){bg='bg-yellow-card';txt='text-Y'}
     if(color==='W'){bg='bg-wild-card';txt='text-W'}
     
     return `<div class="uno-card ${bg} ${isPlayable?'card-clickable':'opacity-70 grayscale-[0.3]'} transition-transform" style="margin-right:-45px;" onclick="${isPlayable?onClick:''}"><span class="card-corner top-left">${display}</span><div class="card-oval"><span class="card-main-value ${txt}">${display}</span></div><span class="card-corner bottom-right">${display}</span></div>`;
